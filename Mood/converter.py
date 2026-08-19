@@ -22,6 +22,27 @@ register_heif_opener()
 MAX_WORKERS = max(2, (os.cpu_count() or 4) - 1)
 
 
+def _resolve_ffmpeg() -> Optional[str]:
+    """
+    Find an ffmpeg binary in a portable way:
+      1) a system ffmpeg on PATH
+      2) the ffmpeg bundled with the imageio-ffmpeg wheel (cross-platform,
+         no separate install needed)
+    Returns the executable path/name, or None if nothing is available.
+    """
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
+
+
+FFMPEG_BIN = _resolve_ffmpeg()
+
+
 def _unique_name(folder: Path, base: str, ext: str) -> str:
     """Always unique even under parallel load."""
     candidate = f"{base}{ext}"
@@ -60,8 +81,16 @@ def convert_video(src: Path, dest_folder: Path, date_str: str) -> Tuple[Optional
             shutil.copy2(src, dest)
             return dest, src.name
 
+        if not FFMPEG_BIN:
+            # No system ffmpeg and imageio-ffmpeg not installed:
+            # keep the original file instead of losing it.
+            fallback = dest.with_suffix(src.suffix.lower())
+            shutil.copy2(src, fallback)
+            log.warning(f"ffmpeg missing – kept original format: {fallback.name}")
+            return fallback, src.name
+
         cmd = [
-            "ffmpeg", "-y", "-i", str(src),
+            FFMPEG_BIN, "-y", "-i", str(src),
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
             "-c:a", "aac", "-b:a", "160k",
             "-movflags", "+faststart",

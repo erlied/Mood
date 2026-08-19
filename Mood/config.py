@@ -3,18 +3,36 @@ Mood - Configuration
 All paths and constants live here.
 """
 
+import os
+import sys
 from pathlib import Path
 
+
 # ============================================================
-# USER PATHS - change only these if needed
+# APP ROOT  (portable + cross-platform)
 # ============================================================
-APP_ROOT = Path(r"C:\Users\gamed\Desktop\Mood")          # Program folder
+# Resolution order:
+#   1) MOOD_HOME environment variable, if set  -> data lives there
+#   2) Frozen build (PyInstaller)              -> next to the .exe/binary
+#   3) Portable default                        -> the folder holding these
+#      source files, so you can copy the whole "Mood" folder to any
+#      Windows / macOS / Linux machine (or a USB stick) and it just runs.
+def _resolve_app_root() -> Path:
+    env = os.environ.get("MOOD_HOME", "").strip()
+    if env:
+        return Path(env).expanduser().resolve()
+    if getattr(sys, "frozen", False):                      # PyInstaller / packaged
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+APP_ROOT = _resolve_app_root()                           # Program / data folder
 MEDIA_ROOT = APP_ROOT / "Media"                          # All performer folders live here
 ARCHIVE_ROOT = APP_ROOT / "Archive"                      # Originals after conversion
 DB_PATH = APP_ROOT / "mood.db"                           # SQLite database
 THUMB_CACHE = APP_ROOT / "thumb_cache"                   # Thumbnail cache
-TEMP_IMPORT = APP_ROOT / "temp_import"
-DECRYPT_TEMP = APP_ROOT / "decrypt_temp"                   # Staging for new files
+TEMP_IMPORT = APP_ROOT / "temp_import"                   # Staging for new files
+DECRYPT_TEMP = APP_ROOT / "decrypt_temp"                 # Plaintext playback staging
 
 # ============================================================
 # BEHAVIOUR
@@ -41,14 +59,16 @@ APP_VERSION = "1.0.0"
 WINDOW_MIN_WIDTH = 1280
 WINDOW_MIN_HEIGHT = 720
 
-# macOS-inspired dark (Liquid Glass / Tahoe feel)
-COLOR_BG = "#1c1c1e"
-COLOR_SURFACE = "#2c2c2e"
-COLOR_SURFACE_2 = "#3a3a3c"
+# macOS / iOS "Liquid Glass" (Tahoe / iOS 26) dark palette
+COLOR_BG = "#141417"              # window base (top of gradient)
+COLOR_BG_2 = "#0d0d10"           # window base (bottom of gradient)
+COLOR_SURFACE = "#232327"        # frosted panel
+COLOR_SURFACE_2 = "#34343a"      # raised element
 COLOR_BORDER = "#48484a"
 COLOR_TEXT = "#f5f5f7"
-COLOR_TEXT_DIM = "#98989d"
+COLOR_TEXT_DIM = "#9a9aa2"
 COLOR_ACCENT = "#0a84ff"          # system blue
-COLOR_ACCENT_HOVER = "#409cff"
+COLOR_ACCENT_HOVER = "#3a9bff"
+COLOR_ACCENT_2 = "#0060df"        # gradient bottom for liquid buttons
 COLOR_DANGER = "#ff453a"
 COLOR_SUCCESS = "#30d158"

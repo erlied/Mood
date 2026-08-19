@@ -5,6 +5,8 @@ Dark, minimal media organizer + mood slideshow.
 
 import sys
 import os
+import time
+import random
 from pathlib import Path
 from datetime import datetime
 from typing import List, Optional, Dict, Set
@@ -14,11 +16,12 @@ from PySide6.QtWidgets import (
     QLabel, QPushButton, QListWidget, QListWidgetItem, QFileDialog,
     QScrollArea, QGridLayout, QFrame, QMessageBox, QInputDialog,
     QSplitter, QSizePolicy, QProgressBar, QLineEdit, QCheckBox,
-    QComboBox, QSpinBox, QStackedWidget, QAbstractItemView, QDialog, QMenu, QTabWidget
+    QComboBox, QSpinBox, QStackedWidget, QAbstractItemView, QDialog, QMenu, QTabWidget,
+    QGraphicsDropShadowEffect, QGraphicsOpacityEffect
 )
 from PySide6.QtCore import (
     Qt, QSize, QTimer, QThread, Signal, QUrl, QPoint, QRect,
-    QObject, QRunnable, QThreadPool
+    QObject, QRunnable, QThreadPool, QPropertyAnimation, QEasingCurve
 )
 from PySide6.QtGui import (
     QPixmap, QImage, QFont, QColor, QPalette, QKeySequence,
@@ -40,57 +43,81 @@ from settings_store import load_settings, save_settings
 # Styles
 # ---------------------------------------------------------------------------
 STYLE = f"""
-QMainWindow, QWidget {{
+QMainWindow {{
     background-color: {config.COLOR_BG};
+}}
+QWidget {{
+    background-color: transparent;
     color: {config.COLOR_TEXT};
-    font-family: "SF Pro Text", "Segoe UI", "Helvetica Neue", sans-serif;
+    font-family: "SF Pro Text", "SF Pro Display", "Segoe UI", "Helvetica Neue", sans-serif;
     font-size: 13px;
 }}
+QMainWindow > QWidget {{
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 {config.COLOR_BG}, stop:1 {config.COLOR_BG_2});
+}}
 QDialog {{
-    background-color: {config.COLOR_BG};
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 {config.COLOR_BG}, stop:1 {config.COLOR_BG_2});
+}}
+QToolTip {{
+    background-color: rgba(30,30,34,0.96);
+    color: {config.COLOR_TEXT};
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 8px;
+    padding: 6px 10px;
 }}
 QPushButton {{
-    background-color: rgba(120,120,128,0.24);
+    background-color: rgba(128,128,138,0.22);
     color: {config.COLOR_TEXT};
-    border: none;
-    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 15px;
     padding: 10px 18px;
     min-height: 20px;
     font-weight: 600;
     font-size: 13px;
 }}
 QPushButton:hover {{
-    background-color: rgba(120,120,128,0.36);
+    background-color: rgba(140,140,150,0.34);
+    border: 1px solid rgba(255,255,255,0.14);
 }}
 QPushButton:pressed {{
-    background-color: rgba(120,120,128,0.48);
+    background-color: rgba(120,120,128,0.5);
+}}
+QPushButton:disabled {{
+    color: rgba(255,255,255,0.35);
+    background-color: rgba(120,120,128,0.12);
+    border: 1px solid rgba(255,255,255,0.04);
 }}
 QPushButton#primary {{
-    background-color: {config.COLOR_ACCENT};
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 {config.COLOR_ACCENT_HOVER}, stop:1 {config.COLOR_ACCENT});
     color: #ffffff;
-    border: none;
-    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.22);
+    border-radius: 15px;
     font-weight: 700;
 }}
 QPushButton#primary:hover {{
-    background-color: {config.COLOR_ACCENT_HOVER};
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #5cb0ff, stop:1 {config.COLOR_ACCENT_HOVER});
 }}
 QPushButton#primary:pressed {{
-    background-color: #0070e0;
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 {config.COLOR_ACCENT}, stop:1 {config.COLOR_ACCENT_2});
 }}
 QPushButton#danger {{
-    background-color: rgba(255,69,58,0.18);
+    background-color: rgba(255,69,58,0.16);
     color: {config.COLOR_DANGER};
-    border: none;
-    border-radius: 14px;
+    border: 1px solid rgba(255,69,58,0.28);
+    border-radius: 15px;
 }}
 QPushButton#danger:hover {{
     background-color: rgba(255,69,58,0.28);
 }}
 QListWidget {{
-    background-color: rgba(44,44,46,0.95);
+    background-color: rgba(44,44,48,0.55);
     border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
+    border-radius: 16px;
     outline: none;
     padding: 6px;
 }}
@@ -100,11 +127,12 @@ QListWidget::item {{
     margin: 2px 3px;
 }}
 QListWidget::item:selected {{
-    background-color: {config.COLOR_ACCENT};
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 {config.COLOR_ACCENT_HOVER}, stop:1 {config.COLOR_ACCENT});
     color: white;
 }}
 QListWidget::item:hover:!selected {{
-    background-color: rgba(120,120,128,0.24);
+    background-color: rgba(140,140,150,0.22);
 }}
 QScrollArea {{
     border: none;
@@ -168,11 +196,13 @@ QProgressBar {{
     color: transparent;
 }}
 QProgressBar::chunk {{
-    background-color: {config.COLOR_ACCENT};
+    background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {config.COLOR_ACCENT}, stop:1 {config.COLOR_ACCENT_HOVER});
     border-radius: 5px;
 }}
 QFrame#card {{
-    background-color: rgba(44,44,46,0.92);
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(58,58,64,0.55), stop:1 rgba(36,36,40,0.55));
     border: 1px solid rgba(255,255,255,0.10);
     border-radius: 22px;
 }}
@@ -239,6 +269,42 @@ QMenu::separator {{
     margin: 6px 12px;
 }}
 """
+
+
+# ---------------------------------------------------------------------------
+# Liquid-glass helpers: soft depth shadows + opacity fade animations
+# ---------------------------------------------------------------------------
+def add_soft_shadow(widget: QWidget, blur: int = 42, y_offset: int = 10,
+                    alpha: int = 120) -> QGraphicsDropShadowEffect:
+    """Give a widget a soft drop shadow so panels appear to float (glass depth)."""
+    eff = QGraphicsDropShadowEffect(widget)
+    eff.setBlurRadius(blur)
+    eff.setXOffset(0)
+    eff.setYOffset(y_offset)
+    eff.setColor(QColor(0, 0, 0, alpha))
+    widget.setGraphicsEffect(eff)
+    return eff
+
+
+def fade_widget(widget: QWidget, duration: int = 280,
+                start: float = 0.0, end: float = 1.0,
+                curve: QEasingCurve.Type = QEasingCurve.OutCubic) -> QPropertyAnimation:
+    """
+    Animate a widget's opacity from start -> end. References are stored on the
+    widget so the effect/animation are not garbage-collected mid-flight.
+    NOTE: replaces any existing QGraphicsEffect on the widget.
+    """
+    eff = QGraphicsOpacityEffect(widget)
+    widget.setGraphicsEffect(eff)
+    anim = QPropertyAnimation(eff, b"opacity", widget)
+    anim.setDuration(duration)
+    anim.setStartValue(start)
+    anim.setEndValue(end)
+    anim.setEasingCurve(curve)
+    widget._fx_effect = eff       # keep alive
+    widget._fx_anim = anim        # keep alive
+    anim.start()
+    return anim
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +418,11 @@ class ThumbItem(QFrame):
             )
         else:
             self.img_label.setText("VIDEO" if self.media_type == "video" else "IMG")
+        # gentle fade-in so the grid populates smoothly
+        try:
+            fade_widget(self.img_label, duration=320)
+        except Exception:
+            pass
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -507,8 +578,15 @@ class MoodWindow(QWidget):
         self._rebuild_panes()          # create the first pane widgets
         self._ready = True
 
-        # show AFTER everything is initialized
+        # show AFTER everything is initialized, with a gentle fade-in
+        self.setWindowOpacity(0.0)
         self.showFullScreen()
+        self._show_anim = QPropertyAnimation(self, b"windowOpacity", self)
+        self._show_anim.setDuration(260)
+        self._show_anim.setStartValue(0.0)
+        self._show_anim.setEndValue(1.0)
+        self._show_anim.setEasingCurve(QEasingCurve.OutCubic)
+        self._show_anim.start()
 
         # start first slide a tiny bit later so the window has real size
         QTimer.singleShot(80, self._next_slide)
@@ -607,6 +685,9 @@ class MoodWindow(QWidget):
         self.audio_outputs.clear()
         self.video_widgets.clear()
         self.image_labels.clear()
+        # one reusable opacity effect + animation per pane (no per-slide leak)
+        self.image_effects: List[QGraphicsOpacityEffect] = []
+        self.image_anims: List[QPropertyAnimation] = []
 
         for i in range(self.pane_count):
             container = QWidget()
@@ -622,6 +703,16 @@ class MoodWindow(QWidget):
             img.setMinimumSize(1, 1)
             lay.addWidget(img, stretch=1)
             self.image_labels.append(img)
+
+            # fade effect for smooth slide transitions
+            eff = QGraphicsOpacityEffect(img)
+            eff.setOpacity(1.0)
+            img.setGraphicsEffect(eff)
+            anim = QPropertyAnimation(eff, b"opacity", img)
+            anim.setDuration(300)
+            anim.setEasingCurve(QEasingCurve.OutCubic)
+            self.image_effects.append(eff)
+            self.image_anims.append(anim)
 
             vw = QVideoWidget()
             vw.setStyleSheet("background: #000;")
@@ -774,7 +865,24 @@ class MoodWindow(QWidget):
             if hasattr(self, "countdown_ring"):
                 self.countdown_ring.hide()
 
-    def _show_in_pane(self, pane_idx: int, path: Path):
+    def _fade_pane_in(self, pane_idx: int):
+        """Restart the pane's opacity animation for a smooth slide transition."""
+        if pane_idx >= len(getattr(self, "image_anims", [])):
+            return
+        anim = self.image_anims[pane_idx]
+        try:
+            anim.stop()
+            anim.setStartValue(0.0)
+            anim.setEndValue(1.0)
+            anim.start()
+        except Exception:
+            # never let a cosmetic animation break playback
+            try:
+                self.image_effects[pane_idx].setOpacity(1.0)
+            except Exception:
+                pass
+
+    def _show_in_pane(self, pane_idx: int, path: Path, animate: bool = True):
         if pane_idx >= len(self.image_labels):
             return
         img_label = self.image_labels[pane_idx]
@@ -801,7 +909,6 @@ class MoodWindow(QWidget):
                     try:
                         dur = player.duration()
                         if dur and dur > 3000:
-                            import random
                             # start somewhere in first 70%
                             pos = random.randint(0, int(dur * 0.7))
                             player.setPosition(pos)
@@ -831,6 +938,10 @@ class MoodWindow(QWidget):
                 y = max(0, (scaled.height() - target.height()) // 2)
                 cropped = scaled.copy(x, y, target.width(), target.height())
                 img_label.setPixmap(cropped)
+
+            # smooth fade for genuine slide changes (not on resize re-scale)
+            if animate:
+                self._fade_pane_in(pane_idx)
 
         # always keep ring above video widgets
         if hasattr(self, "countdown_ring") and self.countdown_enabled and self.countdown_left > 0:
@@ -866,7 +977,7 @@ class MoodWindow(QWidget):
             if i < len(self.image_labels) and self.image_labels[i].isVisible():
                 path = self.media_list[idx]
                 if path.suffix.lower() not in config.SUPPORTED_VIDEO_EXT:
-                    self._show_in_pane(i, path)
+                    self._show_in_pane(i, path, animate=False)
 
 
 
@@ -1073,6 +1184,7 @@ class MainWindow(QMainWindow):
         self.btn_mood_select.clicked.connect(lambda: self._start_mood(select_performers=True))
         left_lay.addWidget(self.btn_mood_select)
 
+        add_soft_shadow(left)
         root.addWidget(left)
 
         # ---------- CENTER: Import / Grid ----------
@@ -1246,6 +1358,7 @@ class MainWindow(QMainWindow):
         self.btn_export.clicked.connect(self._export_all)
         right_lay.addWidget(self.btn_export)
 
+        add_soft_shadow(right)
         root.addWidget(right)
 
         # Enable drag & drop on center
@@ -1266,10 +1379,12 @@ class MainWindow(QMainWindow):
         if not log_path.exists():
             log_path.write_text("Log noch leer.\n", encoding="utf-8")
         try:
+            import subprocess
             if sys.platform == "win32":
                 os.startfile(str(log_path))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(log_path)])
             else:
-                import subprocess
                 subprocess.Popen(["xdg-open", str(log_path)])
             self.info_box.setText(f"Log geöffnet:\n{log_path}")
         except Exception as e:
@@ -1299,8 +1414,6 @@ class MainWindow(QMainWindow):
 
         self.performer_list.clear()
         self.combo_target.clear()
-        performers = self.db.get_all_performers()
-
         performers = self.db.get_all_performers()
         for p in performers:
             item = QListWidgetItem(p["name"])

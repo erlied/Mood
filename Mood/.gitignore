@@ -1,0 +1,19 @@
+# Runtime data created next to the app (portable mode)
+Media/
+Archive/
+temp_import/
+decrypt_temp/
+thumb_cache/
+mood.db
+mood.db-wal
+mood.db-shm
+mood.log
+settings.json
+.mood_salt
+.mood_verify
+.mood_lockout
+
+# Python / venv
+.venv/
+__pycache__/
+*.pyc

@@ -9,13 +9,12 @@ if errorlevel 1 (
     exit /b 1
 )
 
-pip show PySide6 >nul 2>&1
+REM Install everything from requirements.txt if PySide6 is missing
+python -c "import PySide6" >nul 2>&1
 if errorlevel 1 (
-    pip install PySide6 opencv-python-headless Pillow pillow-heif imageio imageio-ffmpeg send2trash cryptography -q
-)
-pip show cryptography >nul 2>&1
-if errorlevel 1 (
-    pip install cryptography -q
+    echo Installiere Abhaengigkeiten...
+    python -m pip install --upgrade pip -q
+    python -m pip install -r requirements.txt -q
 )
 
 pythonw main.py 2>nul

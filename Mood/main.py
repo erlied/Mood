@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QGridLayout, QFrame, QMessageBox, QInputDialog,
     QSplitter, QSizePolicy, QProgressBar, QLineEdit, QCheckBox,
     QComboBox, QSpinBox, QStackedWidget, QAbstractItemView, QDialog, QMenu, QTabWidget,
-    QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QToolButton
+    QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QToolButton, QSlider
 )
 from PySide6.QtCore import (
     Qt, QSize, QTimer, QThread, Signal, QUrl, QPoint, QRect, QRectF, QPointF,
@@ -388,6 +388,41 @@ QToolButton#primary:hover {{
         stop:0 #5cb0ff, stop:1 {config.COLOR_ACCENT_HOVER});
 }}
 QToolButton::menu-indicator {{ image: none; width: 0; }}
+
+/* sidebar link (Favoriten) */
+QPushButton#sidebarLink {{
+    background: transparent;
+    border: none;
+    border-radius: 10px;
+    padding: 9px 12px;
+    text-align: left;
+    font-weight: 600;
+    color: {config.COLOR_TEXT};
+}}
+QPushButton#sidebarLink:hover {{
+    background: rgba(140,140,150,0.20);
+}}
+QPushButton#sidebarLink:pressed {{
+    background: rgba(140,140,150,0.30);
+}}
+
+/* tile zoom slider */
+QSlider#zoomSlider::groove:horizontal {{
+    height: 4px;
+    background: rgba(255,255,255,0.18);
+    border-radius: 2px;
+}}
+QSlider#zoomSlider::handle:horizontal {{
+    width: 14px;
+    height: 14px;
+    margin: -6px 0;
+    border-radius: 7px;
+    background: {config.COLOR_TEXT};
+}}
+QSlider#zoomSlider::sub-page:horizontal {{
+    background: {config.COLOR_ACCENT};
+    border-radius: 2px;
+}}
 """
 
 
@@ -494,16 +529,20 @@ THUMB_TILE = 184
 class ThumbItem(QFrame):
     selected_changed = Signal(object, bool)   # self, is_selected
     double_clicked = Signal(object)           # self
+    context_requested = Signal(object, object)  # self, global QPoint
 
-    def __init__(self, path: Path, media_type: str, parent=None):
+    def __init__(self, path: Path, media_type: str, size: int = THUMB_TILE,
+                 media_id=None, favorite: bool = False, parent=None):
         super().__init__(parent)
         self.path = path
         self.media_type = media_type
+        self.media_id = media_id
+        self.is_favorite = bool(favorite)
         self.is_selected = False
         self._src_pix: Optional[QPixmap] = None
         self._hover = False
         self._loading = True
-        self.setFixedSize(THUMB_TILE, THUMB_TILE)
+        self.setFixedSize(size, size)
         self.setCursor(Qt.PointingHandCursor)
         self.setToolTip(path.name)
         # parallel load via global thread pool
@@ -550,6 +589,9 @@ class ThumbItem(QFrame):
         if event.button() == Qt.LeftButton:
             self.double_clicked.emit(self)
         super().mouseDoubleClickEvent(event)
+
+    def contextMenuEvent(self, event):
+        self.context_requested.emit(self, event.globalPos())
 
     def _update_style(self):
         # kept for external callers (select-all / deselect-all); just repaint
@@ -626,6 +668,17 @@ class ThumbItem(QFrame):
             p.setPen(check)
             p.drawLine(QPointF(cx + 7, cy + 13), QPointF(cx + 11, cy + 18))
             p.drawLine(QPointF(cx + 11, cy + 18), QPointF(cx + 19, cy + 8))
+
+        # favorite heart (top-left)
+        if self.is_favorite:
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(0, 0, 0, 120))
+            p.drawEllipse(8, 8, 26, 26)
+            p.setPen(QColor(config.COLOR_DANGER))
+            hf = p.font()
+            hf.setPointSize(12)
+            p.setFont(hf)
+            p.drawText(QRectF(8, 8, 26, 26), Qt.AlignCenter, "♥")
 
         p.end()
 
@@ -1298,6 +1351,11 @@ class MainWindow(QMainWindow):
         self.current_session_id: Optional[int] = None
         self._auto_assign_after_convert: Optional[int] = None
         self._console_visible = False
+        self._viewing_favorites = False
+        self.tile_size = max(120, min(300, int(load_settings().get("tile_size", 184) or 184)))
+        self._tile_apply_timer = QTimer(self)
+        self._tile_apply_timer.setSingleShot(True)
+        self._tile_apply_timer.timeout.connect(self._apply_tile_size)
 
         log.info("MainWindow init")
         self._build_ui()
@@ -1351,6 +1409,12 @@ class MainWindow(QMainWindow):
         wordmark = QLabel("Mood")
         wordmark.setObjectName("wordmark")
         sb.addWidget(wordmark)
+
+        self.btn_favorites = QPushButton("♥   Favoriten")
+        self.btn_favorites.setObjectName("sidebarLink")
+        self.btn_favorites.setCursor(Qt.PointingHandCursor)
+        self.btn_favorites.clicked.connect(self._show_favorites)
+        sb.addWidget(self.btn_favorites)
 
         lib_label = QLabel("BIBLIOTHEK")
         lib_label.setObjectName("sectionHeader")
@@ -1529,9 +1593,17 @@ class MainWindow(QMainWindow):
         self.info_box.setObjectName("statusText")
         stl.addWidget(self.info_box)
         stl.addStretch()
-        self.status_hint = QLabel("Leertaste = weiter · Esc = schließen")
-        self.status_hint.setObjectName("statusHint")
-        stl.addWidget(self.status_hint)
+        zoom_lbl = QLabel("Größe")
+        zoom_lbl.setObjectName("statusHint")
+        stl.addWidget(zoom_lbl)
+        self.zoom_slider = QSlider(Qt.Horizontal)
+        self.zoom_slider.setObjectName("zoomSlider")
+        self.zoom_slider.setFixedWidth(120)
+        self.zoom_slider.setRange(120, 300)
+        self.zoom_slider.setValue(self.tile_size)
+        self.zoom_slider.setToolTip("Kachelgröße")
+        self.zoom_slider.valueChanged.connect(self._on_tile_slider)
+        stl.addWidget(self.zoom_slider)
         root.addWidget(status)
 
         # hidden holder – content surfaced via Top-Darsteller popover / mood summary
@@ -1593,7 +1665,8 @@ class MainWindow(QMainWindow):
         self.combo_target.clear()
         performers = self.db.get_all_performers()
         for p in performers:
-            item = QListWidgetItem(p["name"])
+            fav = bool(p["is_favorite"])
+            item = QListWidgetItem(("♥  " if fav else "") + p["name"])
             item.setData(Qt.UserRole, p["id"])
             self.performer_list.addItem(item)
             self.combo_target.addItem(p["name"], p["id"])
@@ -1657,14 +1730,21 @@ class MainWindow(QMainWindow):
         if item is None:
             return
         self.performer_list.setCurrentItem(item)
+        pid = item.data(Qt.UserRole)
+        perf = self.db.get_performer_by_id(pid)
+        is_fav = bool(perf["is_favorite"]) if perf else False
         menu = QMenu(self)
         menu.setStyleSheet(STYLE)
         act_mood = menu.addAction("Mood starten")
+        act_fav = menu.addAction("♥ Favorit entfernen" if is_fav else "♡ Als Favorit markieren")
         menu.addSeparator()
         act_del = menu.addAction("Darsteller löschen…")
         chosen = menu.exec(self.performer_list.mapToGlobal(pos))
         if chosen == act_mood:
             self._start_mood()
+        elif chosen == act_fav:
+            self.db.toggle_performer_favorite(pid)
+            self._load_performers()
         elif chosen == act_del:
             self._delete_performer(item)
 
@@ -1718,6 +1798,7 @@ class MainWindow(QMainWindow):
 
     def _browse_performer(self, perf, media_rows):
         """Load performer's media into the center grid so user can view/delete."""
+        self._viewing_favorites = False
         self.pending_files.clear()
         folder = config.MEDIA_ROOT / perf["folder_name"]
         for r in media_rows:
@@ -1729,6 +1810,7 @@ class MainWindow(QMainWindow):
                     "type": r["media_type"],
                     "selected": False,
                     "media_id": r["id"],
+                    "is_fav": bool(r["is_favorite"]),
                     "browse": True,
                 })
         if folder.exists():
@@ -1908,6 +1990,82 @@ class MainWindow(QMainWindow):
             f"Filter: {mode} — {len(self.pending_files)} / {len(self._browse_all_files)} Dateien"
         )
 
+    # ------------------------------------------------------------------
+    # Tile zoom + context menu + favorites
+    # ------------------------------------------------------------------
+    def _on_tile_slider(self, val: int):
+        self.tile_size = int(val)
+        self._tile_apply_timer.start(120)      # debounce rebuilds
+
+    def _apply_tile_size(self):
+        if self.pending_files:
+            self._refresh_grid()
+        try:
+            data = load_settings()
+            data["tile_size"] = self.tile_size
+            save_settings(data)
+        except Exception:
+            pass
+
+    def _thumb_context_menu(self, thumb: "ThumbItem", global_pos):
+        menu = QMenu(self)
+        menu.setStyleSheet(STYLE)
+        act_full = menu.addAction("Vollbild")
+        act_fav = None
+        if thumb.media_id:
+            act_fav = menu.addAction("♥ Favorit entfernen" if thumb.is_favorite else "♡ Als Favorit")
+        menu.addSeparator()
+        act_del = menu.addAction("Löschen…")
+        chosen = menu.exec(global_pos)
+        if chosen is None:
+            return
+        if chosen == act_full:
+            self._preview_media(thumb)
+        elif act_fav is not None and chosen == act_fav:
+            newval = self.db.toggle_media_favorite(thumb.media_id)
+            thumb.is_favorite = newval
+            thumb.update()
+            for coll in (self.pending_files, self._browse_all_files):
+                for e in coll:
+                    if e.get("media_id") == thumb.media_id:
+                        e["is_fav"] = newval
+            self.info_box.setText("Zu Favoriten hinzugefügt." if newval else "Aus Favoriten entfernt.")
+        elif chosen == act_del:
+            for e in self.pending_files:
+                e["selected"] = (e["path"] == thumb.path)
+            self._delete_selected_pending()
+
+    def _show_favorites(self):
+        """Show every favorite photo/video across all performers."""
+        self._viewing_favorites = True
+        self.performer_list.clearSelection()
+        rows = self.db.get_all_favorite_media()
+        self.pending_files = []
+        for r in rows:
+            folder = config.MEDIA_ROOT / r["folder_name"]
+            p = folder / r["filename"]
+            if p.exists():
+                self.pending_files.append({
+                    "path": p,
+                    "original": r["original_name"] or r["filename"],
+                    "type": r["media_type"],
+                    "selected": False,
+                    "media_id": r["id"],
+                    "is_fav": True,
+                    "browse": True,
+                })
+        self._browse_all_files = list(self.pending_files)
+        self._browse_filter = "all"
+        if hasattr(self, "btn_filter_all"):
+            self.btn_filter_all.setChecked(True)
+            self.btn_filter_img.setChecked(False)
+            self.btn_filter_vid.setChecked(False)
+            self.browse_filter_frame.show()
+        self._refresh_grid()
+        n = len(self.pending_files)
+        self._set_header("♥ Favoriten", f"{n} markierte Datei(en)" if n else "Noch keine Favoriten – Rechtsklick auf ein Foto → „Als Favorit“")
+        self.info_box.setText(f"Favoriten · {n} Dateien")
+
     def _preview_media(self, thumb: "ThumbItem"):
         path = thumb.path
         display = vault.resolve_for_display(path) if vault.is_unlocked else path
@@ -1976,10 +2134,16 @@ class MainWindow(QMainWindow):
         cols = self._grid_columns()
         self._grid_cols = cols
         for i, entry in enumerate(self.pending_files):
-            thumb = ThumbItem(entry["path"], entry["type"])
+            thumb = ThumbItem(
+                entry["path"], entry["type"],
+                size=self.tile_size,
+                media_id=entry.get("media_id"),
+                favorite=bool(entry.get("is_fav")),
+            )
             thumb.is_selected = bool(entry.get("selected"))
             thumb.selected_changed.connect(self._on_thumb_selected)
             thumb.double_clicked.connect(self._preview_media)
+            thumb.context_requested.connect(self._thumb_context_menu)
             row, col = divmod(i, cols)
             self.grid_layout.addWidget(thumb, row, col)
 
@@ -1988,9 +2152,9 @@ class MainWindow(QMainWindow):
 
     def _grid_columns(self) -> int:
         vw = self.scroll.viewport().width()
-        if vw < THUMB_TILE:                      # not laid out yet → estimate
+        if vw < self.tile_size:                  # not laid out yet → estimate
             vw = self.width() - 236 - 44
-        return max(1, vw // (THUMB_TILE + self.grid_layout.spacing()))
+        return max(1, vw // (self.tile_size + self.grid_layout.spacing()))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

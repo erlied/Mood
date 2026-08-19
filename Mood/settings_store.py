@@ -16,6 +16,7 @@ DEFAULTS: Dict[str, Any] = {
     "auto_lock_minutes": 15,
     "default_countdown": 0,
     "repeat_cooldown_sec": 30,
+    "tile_size": 184,
 }
 
 

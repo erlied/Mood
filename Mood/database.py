@@ -176,7 +176,7 @@ class Database:
     def get_all_favorite_media(self) -> List[sqlite3.Row]:
         conn = self._connect()
         return conn.execute(
-            "SELECT m.*, p.name as performer_name FROM media m "
+            "SELECT m.*, p.name as performer_name, p.folder_name as folder_name FROM media m "
             "JOIN performers p ON p.id = m.performer_id "
             "WHERE m.is_favorite=1 ORDER BY m.filename"
         ).fetchall()

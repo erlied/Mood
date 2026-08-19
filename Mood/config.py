@@ -48,8 +48,8 @@ DATE_FORMAT = "%d-%m-%y"
 # Default countdown max (user can change every session)
 DEFAULT_COUNTDOWN_MAX = 0
 
-# Thumbnail size for grid
-THUMB_SIZE = (220, 220)
+# Thumbnail size for grid (natural aspect, cover-cropped in the UI)
+THUMB_SIZE = (400, 400)
 
 # ============================================================
 # UI

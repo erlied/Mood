@@ -17,10 +17,12 @@ except ImportError:
 
 def _thumb_path(media_path: Path) -> Path:
     """Deterministic cache path for a media file."""
-    # Use relative path hash-ish name so different performers don't collide
+    # Use relative path hash-ish name so different performers don't collide.
+    # "v2" tag => natural-aspect thumbs (no letterbox padding); bumping the tag
+    # transparently regenerates old cached thumbnails.
     key = str(media_path).replace("\\", "/").replace(":", "")
-    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in key)[-180:]
-    return config.THUMB_CACHE / f"{safe}.jpg"
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in key)[-170:]
+    return config.THUMB_CACHE / f"v2_{safe}.jpg"
 
 
 def get_thumbnail(media_path: Path, size: tuple = config.THUMB_SIZE) -> Optional[Path]:
@@ -49,12 +51,10 @@ def get_thumbnail(media_path: Path, size: tuple = config.THUMB_SIZE) -> Optional
 def _image_thumb(src: Path, dest: Path, size: tuple) -> Optional[Path]:
     with Image.open(src) as im:
         im = im.convert("RGB")
+        # Keep natural aspect ratio (no letterbox padding) so the UI can
+        # cover-crop tiles cleanly, Apple Photos style.
         im.thumbnail(size, Image.Resampling.LANCZOS)
-        # Center on black background so all thumbs are same size
-        bg = Image.new("RGB", size, (20, 20, 20))
-        offset = ((size[0] - im.width) // 2, (size[1] - im.height) // 2)
-        bg.paste(im, offset)
-        bg.save(dest, "JPEG", quality=85)
+        im.save(dest, "JPEG", quality=88)
     return dest
 
 
@@ -75,10 +75,7 @@ def _video_thumb(src: Path, dest: Path, size: tuple) -> Optional[Path]:
     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     im = Image.fromarray(frame)
     im.thumbnail(size, Image.Resampling.LANCZOS)
-    bg = Image.new("RGB", size, (20, 20, 20))
-    offset = ((size[0] - im.width) // 2, (size[1] - im.height) // 2)
-    bg.paste(im, offset)
-    bg.save(dest, "JPEG", quality=85)
+    im.save(dest, "JPEG", quality=88)
     return dest
 
 

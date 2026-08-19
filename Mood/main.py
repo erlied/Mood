@@ -17,15 +17,16 @@ from PySide6.QtWidgets import (
     QScrollArea, QGridLayout, QFrame, QMessageBox, QInputDialog,
     QSplitter, QSizePolicy, QProgressBar, QLineEdit, QCheckBox,
     QComboBox, QSpinBox, QStackedWidget, QAbstractItemView, QDialog, QMenu, QTabWidget,
-    QGraphicsDropShadowEffect, QGraphicsOpacityEffect
+    QGraphicsDropShadowEffect, QGraphicsOpacityEffect, QToolButton
 )
 from PySide6.QtCore import (
-    Qt, QSize, QTimer, QThread, Signal, QUrl, QPoint, QRect,
+    Qt, QSize, QTimer, QThread, Signal, QUrl, QPoint, QRect, QRectF, QPointF,
     QObject, QRunnable, QThreadPool, QPropertyAnimation, QEasingCurve
 )
 from PySide6.QtGui import (
     QPixmap, QImage, QFont, QColor, QPalette, QKeySequence,
-    QShortcut, QDragEnterEvent, QDropEvent, QPainter, QBrush, QPen
+    QShortcut, QDragEnterEvent, QDropEvent, QPainter, QBrush, QPen,
+    QPainterPath, QAction
 )
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
@@ -268,6 +269,125 @@ QMenu::separator {{
     background: rgba(255,255,255,0.08);
     margin: 6px 12px;
 }}
+
+/* =================== Apple-style layout =================== */
+QFrame#sidebar {{
+    background-color: rgba(28,28,32,0.72);
+    border-right: 1px solid rgba(255,255,255,0.06);
+}}
+QLabel#wordmark {{
+    font-size: 24px;
+    font-weight: 800;
+    color: {config.COLOR_TEXT};
+    padding: 0 4px 2px 4px;
+}}
+QLabel#sectionHeader {{
+    color: {config.COLOR_TEXT_DIM};
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px 6px 2px 6px;
+}}
+QListWidget#sidebarList {{
+    background: transparent;
+    border: none;
+    padding: 2px;
+    outline: none;
+}}
+QListWidget#sidebarList::item {{
+    padding: 9px 12px;
+    border-radius: 10px;
+    margin: 2px 0;
+    color: {config.COLOR_TEXT};
+}}
+QListWidget#sidebarList::item:selected {{
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 {config.COLOR_ACCENT_HOVER}, stop:1 {config.COLOR_ACCENT});
+    color: white;
+}}
+QListWidget#sidebarList::item:hover:!selected {{
+    background-color: rgba(140,140,150,0.20);
+}}
+QLabel#headerTitle {{
+    font-size: 23px;
+    font-weight: 700;
+    color: {config.COLOR_TEXT};
+}}
+QLabel#headerSub {{
+    font-size: 12px;
+    color: {config.COLOR_TEXT_DIM};
+}}
+QScrollArea#gridScroll {{
+    background: transparent;
+    border: none;
+}}
+QLabel#dropHint {{
+    color: {config.COLOR_TEXT_DIM};
+    font-size: 15px;
+    border: 2px dashed rgba(255,255,255,0.12);
+    border-radius: 24px;
+    padding: 44px;
+    margin: 10px 60px;
+    background: rgba(255,255,255,0.02);
+}}
+QFrame#actionBar {{
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 rgba(56,56,62,0.94), stop:1 rgba(40,40,46,0.94));
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 18px;
+}}
+QFrame#statusBar {{
+    background-color: rgba(18,18,22,0.55);
+    border-top: 1px solid rgba(255,255,255,0.06);
+}}
+QLabel#statusText {{ color: {config.COLOR_TEXT_DIM}; font-size: 12px; }}
+QLabel#statusHint {{ color: rgba(255,255,255,0.28); font-size: 11px; }}
+
+/* segmented filter control */
+QFrame#segmented {{
+    background: rgba(120,120,128,0.20);
+    border-radius: 12px;
+}}
+QPushButton#segBtn {{
+    background: transparent;
+    border: none;
+    border-radius: 9px;
+    padding: 6px 15px;
+    font-weight: 600;
+    color: {config.COLOR_TEXT_DIM};
+    min-height: 16px;
+}}
+QPushButton#segBtn:hover {{ color: {config.COLOR_TEXT}; }}
+QPushButton#segBtn:checked {{
+    background: rgba(130,130,140,0.55);
+    color: {config.COLOR_TEXT};
+}}
+
+/* toolbar menu buttons */
+QToolButton {{
+    background-color: rgba(128,128,138,0.22);
+    color: {config.COLOR_TEXT};
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 14px;
+    padding: 9px 16px;
+    font-weight: 600;
+    font-size: 13px;
+}}
+QToolButton:hover {{
+    background-color: rgba(140,140,150,0.34);
+    border: 1px solid rgba(255,255,255,0.14);
+}}
+QToolButton:pressed {{ background-color: rgba(120,120,128,0.5); }}
+QToolButton#primary {{
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 {config.COLOR_ACCENT_HOVER}, stop:1 {config.COLOR_ACCENT});
+    color: #ffffff;
+    border: 1px solid rgba(255,255,255,0.22);
+}}
+QToolButton#primary:hover {{
+    background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+        stop:0 #5cb0ff, stop:1 {config.COLOR_ACCENT_HOVER});
+}}
+QToolButton::menu-indicator {{ image: none; width: 0; }}
 """
 
 
@@ -364,8 +484,12 @@ class ThumbLoadRunnable(QRunnable):
             self.signals.finished.emit(self.item, None)
 
 
+# Apple Photos-style square tile size
+THUMB_TILE = 184
+
+
 # ---------------------------------------------------------------------------
-# Thumbnail widget for the import grid
+# Thumbnail widget for the import grid (Apple Photos-style tile)
 # ---------------------------------------------------------------------------
 class ThumbItem(QFrame):
     selected_changed = Signal(object, bool)   # self, is_selected
@@ -376,29 +500,12 @@ class ThumbItem(QFrame):
         self.path = path
         self.media_type = media_type
         self.is_selected = False
-        self.setObjectName("card")
-        self.setFixedSize(200, 230)
+        self._src_pix: Optional[QPixmap] = None
+        self._hover = False
+        self._loading = True
+        self.setFixedSize(THUMB_TILE, THUMB_TILE)
         self.setCursor(Qt.PointingHandCursor)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
-        layout.setSpacing(4)
-
-        self.img_label = QLabel()
-        self.img_label.setFixedSize(190, 190)
-        self.img_label.setAlignment(Qt.AlignCenter)
-        self.img_label.setStyleSheet("background:rgba(58,58,60,0.9); border-radius:12px;")
-        layout.addWidget(self.img_label)
-
-        name = path.name
-        if len(name) > 22:
-            name = name[:19] + "…"
-        self.name_label = QLabel(name)
-        self.name_label.setAlignment(Qt.AlignCenter)
-        self.name_label.setStyleSheet(f"color:{config.COLOR_TEXT_DIM}; font-size:11px;")
-        layout.addWidget(self.name_label)
-
-        self.img_label.setText("…")
+        self.setToolTip(path.name)
         # parallel load via global thread pool
         QTimer.singleShot(0, self._queue_thumb)
 
@@ -412,22 +519,30 @@ class ThumbItem(QFrame):
     def _on_thumb_ready(self, item, pix):
         if item is not self:
             return
-        if pix is not None and not pix.isNull():
-            self.img_label.setPixmap(
-                pix.scaled(190, 190, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            )
-        else:
-            self.img_label.setText("VIDEO" if self.media_type == "video" else "IMG")
+        self._loading = False
+        self._src_pix = pix if (pix is not None and not pix.isNull()) else None
+        self.update()
         # gentle fade-in so the grid populates smoothly
         try:
-            fade_widget(self.img_label, duration=320)
+            fade_widget(self, duration=320, start=0.0, end=1.0)
         except Exception:
             pass
+
+    # ---- interaction ----
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.is_selected = not self.is_selected
-            self._update_style()
+            self.update()
             self.selected_changed.emit(self, self.is_selected)
         super().mousePressEvent(event)
 
@@ -437,12 +552,82 @@ class ThumbItem(QFrame):
         super().mouseDoubleClickEvent(event)
 
     def _update_style(self):
-        if self.is_selected:
-            self.setStyleSheet(
-                f"QFrame#card {{ border: 2px solid {config.COLOR_ACCENT}; background:rgba(10,132,255,0.12); border-radius:16px; }}"
+        # kept for external callers (select-all / deselect-all); just repaint
+        self.update()
+
+    # ---- painting ----
+    def paintEvent(self, event):
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        w, h = self.width(), self.height()
+        radius = 18
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(0, 0, w, h), radius, radius)
+        p.setClipPath(path)
+
+        # base
+        p.fillRect(0, 0, w, h, QColor(40, 40, 45))
+
+        if self._src_pix is not None:
+            scaled = self._src_pix.scaled(
+                self.size(), Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation
             )
+            sx = max(0, (scaled.width() - w) // 2)
+            sy = max(0, (scaled.height() - h) // 2)
+            p.drawPixmap(0, 0, scaled, sx, sy, w, h)
         else:
-            self.setStyleSheet("")
+            p.setPen(QColor(150, 150, 156))
+            f = p.font(); f.setPointSize(10); p.setFont(f)
+            txt = "…" if self._loading else ("VIDEO" if self.media_type == "video" else "?")
+            p.drawText(QRectF(0, 0, w, h), Qt.AlignCenter, txt)
+
+        # subtle top sheen for depth
+        sheen = QColor(255, 255, 255, 16)
+        p.fillRect(0, 0, w, int(h * 0.4), sheen)
+
+        p.setClipping(False)
+
+        # hover highlight
+        if self._hover and not self.is_selected:
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(255, 255, 255, 22))
+            p.drawPath(path)
+
+        # video badge
+        if self.media_type == "video":
+            bx, by, bw, bh = 8, h - 30, 30, 22
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(0, 0, 0, 150))
+            p.drawRoundedRect(bx, by, bw, bh, 8, 8)
+            tri = QPainterPath()
+            tri.moveTo(bx + 11, by + 6)
+            tri.lineTo(bx + 11, by + 16)
+            tri.lineTo(bx + 21, by + 11)
+            tri.closeSubpath()
+            p.fillPath(tri, QColor("#ffffff"))
+
+        # selection ring + checkmark (Apple Photos look)
+        if self.is_selected:
+            pen = QPen(QColor(config.COLOR_ACCENT))
+            pen.setWidth(4)
+            p.setPen(pen)
+            p.setBrush(Qt.NoBrush)
+            p.drawRoundedRect(QRectF(2, 2, w - 4, h - 4), radius - 2, radius - 2)
+            cd = 26
+            cx = w - cd - 9
+            cy = 9
+            p.setPen(Qt.NoPen)
+            p.setBrush(QColor(config.COLOR_ACCENT))
+            p.drawEllipse(cx, cy, cd, cd)
+            check = QPen(QColor("#ffffff"))
+            check.setWidth(3)
+            check.setCapStyle(Qt.RoundCap)
+            check.setJoinStyle(Qt.RoundJoin)
+            p.setPen(check)
+            p.drawLine(QPointF(cx + 7, cy + 13), QPointF(cx + 11, cy + 18))
+            p.drawLine(QPointF(cx + 11, cy + 18), QPointF(cx + 19, cy + 8))
+
+        p.end()
 
 
 # ---------------------------------------------------------------------------
@@ -1124,247 +1309,239 @@ class MainWindow(QMainWindow):
     def _apply_style(self):
         self.setStyleSheet(STYLE)
 
+    def _menu_button(self, text: str, actions, primary: bool = False) -> QToolButton:
+        """Create a toolbar QToolButton with a popup menu (Apple-style)."""
+        btn = QToolButton()
+        btn.setText(text)
+        btn.setPopupMode(QToolButton.InstantPopup)
+        btn.setCursor(Qt.PointingHandCursor)
+        if primary:
+            btn.setObjectName("primary")
+        menu = QMenu(btn)
+        menu.setStyleSheet(STYLE)
+        for label, slot in actions:
+            if label == "-":
+                menu.addSeparator()
+            else:
+                menu.addAction(label, slot)
+        btn.setMenu(menu)
+        return btn
+
     def _build_ui(self):
         central = QWidget()
         self.setCentralWidget(central)
-        root = QHBoxLayout(central)
-        root.setContentsMargins(10, 10, 10, 10)
-        root.setSpacing(10)
+        root = QVBoxLayout(central)
+        root.setContentsMargins(0, 0, 0, 0)
+        root.setSpacing(0)
 
-        # ---------- LEFT: Performers ----------
-        left = QFrame()
-        left.setObjectName("card")
-        left.setAttribute(Qt.WA_StyledBackground, True)
-        left.setFixedWidth(260)
-        left_lay = QVBoxLayout(left)
-        left_lay.setContentsMargins(14, 14, 14, 14)
+        body = QHBoxLayout()
+        body.setContentsMargins(0, 0, 0, 0)
+        body.setSpacing(0)
+        root.addLayout(body, stretch=1)
 
-        title = QLabel("Darsteller")
-        title.setAttribute(Qt.WA_StyledBackground, True)
-        title.setStyleSheet(
-            f"font-size: 15px; font-weight: 600; background: rgba(120,120,128,0.22); "
-            f"border-radius: 12px; padding: 8px 12px; color: {config.COLOR_TEXT};"
-        )
-        left_lay.addWidget(title)
+        # ================= SIDEBAR =================
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setAttribute(Qt.WA_StyledBackground, True)
+        sidebar.setFixedWidth(236)
+        sb = QVBoxLayout(sidebar)
+        sb.setContentsMargins(16, 20, 14, 16)
+        sb.setSpacing(12)
+
+        wordmark = QLabel("Mood")
+        wordmark.setObjectName("wordmark")
+        sb.addWidget(wordmark)
+
+        lib_label = QLabel("BIBLIOTHEK")
+        lib_label.setObjectName("sectionHeader")
+        sb.addWidget(lib_label)
 
         self.performer_list = QListWidget()
+        self.performer_list.setObjectName("sidebarList")
         self.performer_list.setSelectionMode(QAbstractItemView.SingleSelection)
         self.performer_list.setDragDropMode(QAbstractItemView.InternalMove)
         self.performer_list.setDefaultDropAction(Qt.MoveAction)
         self.performer_list.setDragEnabled(True)
         self.performer_list.setAcceptDrops(True)
         self.performer_list.setDropIndicatorShown(True)
+        self.performer_list.setFrameShape(QFrame.NoFrame)
         self.performer_list.itemClicked.connect(self._on_performer_clicked)
         self.performer_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.performer_list.customContextMenuRequested.connect(self._performer_context_menu)
         self.performer_list.model().rowsMoved.connect(self._on_performers_reordered)
-        left_lay.addWidget(self.performer_list, stretch=1)
+        sb.addWidget(self.performer_list, stretch=1)
 
-        btn_row = QHBoxLayout()
-        self.btn_add_perf = QPushButton("+ Neu")
+        self.btn_add_perf = QPushButton("＋   Darsteller")
+        self.btn_add_perf.setObjectName("primary")
+        self.btn_add_perf.setCursor(Qt.PointingHandCursor)
         self.btn_add_perf.clicked.connect(self._add_performer)
-        btn_row.addWidget(self.btn_add_perf)
+        sb.addWidget(self.btn_add_perf)
 
-        left_lay.addLayout(btn_row)
+        body.addWidget(sidebar)
 
-        self.btn_import_perf_folder = QPushButton("Ordner → Darsteller")
-        self.btn_import_perf_folder.setToolTip(
-            "Ordner wählen: Ordnername = Darsteller, Inhalt wird importiert"
-        )
-        self.btn_import_perf_folder.clicked.connect(self._import_folder_as_performer)
-        left_lay.addWidget(self.btn_import_perf_folder)
+        # ================= MAIN =================
+        main = QWidget()
+        main.setObjectName("main")
+        main_lay = QVBoxLayout(main)
+        main_lay.setContentsMargins(22, 16, 22, 10)
+        main_lay.setSpacing(14)
 
-        self.btn_mood_all = QPushButton("MOOD ALLE")
-        self.btn_mood_all.setToolTip("Alle Darsteller / alle Dateien mischen")
-        self.btn_mood_all.clicked.connect(lambda: self._start_mood(all_media=True))
-        left_lay.addWidget(self.btn_mood_all)
+        # ---- toolbar ----
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(10)
 
-        self.btn_mood_select = QPushButton("MOOD AUSWAHL")
-        self.btn_mood_select.setToolTip("Mehrere Darsteller auswählen")
-        self.btn_mood_select.clicked.connect(lambda: self._start_mood(select_performers=True))
-        left_lay.addWidget(self.btn_mood_select)
+        title_block = QVBoxLayout()
+        title_block.setSpacing(0)
+        self.header_title = QLabel("Bibliothek")
+        self.header_title.setObjectName("headerTitle")
+        self.header_sub = QLabel("Wähle links einen Darsteller")
+        self.header_sub.setObjectName("headerSub")
+        title_block.addWidget(self.header_title)
+        title_block.addWidget(self.header_sub)
+        toolbar.addLayout(title_block)
+        toolbar.addStretch()
 
-        add_soft_shadow(left)
-        root.addWidget(left)
-
-        # ---------- CENTER: Import / Grid ----------
-        center = QFrame()
-        center.setObjectName("card")
-        center.setAttribute(Qt.WA_StyledBackground, True)
-        center_lay = QVBoxLayout(center)
-        center_lay.setContentsMargins(16, 16, 16, 16)
-
-        top_bar = QHBoxLayout()
-        self.btn_import = QPushButton("Dateien hinzufügen…")
-        self.btn_import.clicked.connect(self._import_files)
-        top_bar.addWidget(self.btn_import)
-
-        self.btn_import_folder = QPushButton("Ordner hinzufügen…")
-        self.btn_import_folder.clicked.connect(self._import_folder)
-        top_bar.addWidget(self.btn_import_folder)
-
-        top_bar.addStretch()
-
-        self.lbl_pending = QLabel("0 Dateien bereit")
-        self.lbl_pending.setObjectName("dim")
-        self.lbl_pending.setAttribute(Qt.WA_StyledBackground, True)
-        self.lbl_pending.setStyleSheet(
-            f"color:{config.COLOR_TEXT_DIM}; font-size:12px; background: rgba(120,120,128,0.22); "
-            f"border-radius: 12px; padding: 8px 12px;"
-        )
-        top_bar.addWidget(self.lbl_pending)
-
-        self.btn_clear_pending = QPushButton("Leeren")
-        self.btn_clear_pending.clicked.connect(self._clear_pending)
-        top_bar.addWidget(self.btn_clear_pending)
-
-        center_lay.addLayout(top_bar)
-
-        # Browse filter (shown only when viewing a performer library)
+        # segmented filter (hidden until browsing a library)
         self.browse_filter_frame = QFrame()
+        self.browse_filter_frame.setObjectName("segmented")
+        self.browse_filter_frame.setAttribute(Qt.WA_StyledBackground, True)
         bf = QHBoxLayout(self.browse_filter_frame)
-        bf.setContentsMargins(0, 4, 0, 4)
-        bf.addWidget(QLabel("Anzeigen:"))
-        self.btn_filter_all = QPushButton("Alles")
-        self.btn_filter_img = QPushButton("Nur Fotos")
-        self.btn_filter_vid = QPushButton("Nur Videos")
+        bf.setContentsMargins(3, 3, 3, 3)
+        bf.setSpacing(2)
+        self.btn_filter_all = QPushButton("Alle")
+        self.btn_filter_img = QPushButton("Fotos")
+        self.btn_filter_vid = QPushButton("Videos")
         for b in (self.btn_filter_all, self.btn_filter_img, self.btn_filter_vid):
             b.setCheckable(True)
+            b.setObjectName("segBtn")
+            b.setCursor(Qt.PointingHandCursor)
             bf.addWidget(b)
         self.btn_filter_all.setChecked(True)
         self.btn_filter_all.clicked.connect(lambda: self._set_browse_filter("all"))
         self.btn_filter_img.clicked.connect(lambda: self._set_browse_filter("image"))
         self.btn_filter_vid.clicked.connect(lambda: self._set_browse_filter("video"))
-        bf.addStretch()
-        center_lay.addWidget(self.browse_filter_frame)
+        toolbar.addWidget(self.browse_filter_frame)
         self.browse_filter_frame.hide()
 
-        # Progress
+        # import menu button
+        self.btn_import = self._menu_button("Importieren  ▾", [
+            ("Dateien…", self._import_files),
+            ("Ordner…", self._import_folder),
+            ("-", None),
+            ("Ordner als Darsteller…", self._import_folder_as_performer),
+        ])
+        toolbar.addWidget(self.btn_import)
+        # kept as a live (hidden) object so enable/disable code still works
+        self.btn_import_folder = QPushButton()
+        self.btn_import_folder.hide()
+
+        # primary Mood menu button
+        self.btn_mood = self._menu_button("▶   Mood  ▾", [
+            ("Ausgewählter Darsteller", lambda: self._start_mood()),
+            ("Alle Darsteller", lambda: self._start_mood(all_media=True)),
+            ("Mehrere wählen…", lambda: self._start_mood(select_performers=True)),
+        ], primary=True)
+        toolbar.addWidget(self.btn_mood)
+
+        # overflow menu
+        self.btn_more = self._menu_button("•••", [
+            ("Einstellungen…", self._open_settings),
+            ("Top Darsteller", self._show_top),
+            ("-", None),
+            ("Export ZIP…", self._export_all),
+            ("Datenbank bereinigen", lambda: self._cleanup_db()),
+        ])
+        toolbar.addWidget(self.btn_more)
+
+        main_lay.addLayout(toolbar)
+
+        # ---- progress ----
         self.progress = QProgressBar()
         self.progress.hide()
-        center_lay.addWidget(self.progress)
+        main_lay.addWidget(self.progress)
 
-        # Scrollable grid of pending thumbs
+        # ---- photo grid ----
         self.scroll = QScrollArea()
+        self.scroll.setObjectName("gridScroll")
         self.scroll.setWidgetResizable(True)
         self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.scroll.setAttribute(Qt.WA_StyledBackground, True)
-        self.scroll.setStyleSheet(
-            "QScrollArea { background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); "
-            "border-radius: 16px; }"
-            "QScrollArea > QWidget > QWidget { background: transparent; }"
-        )
+        self.scroll.setFrameShape(QFrame.NoFrame)
         self.grid_host = QWidget()
         self.grid_host.setStyleSheet("background: transparent;")
         self.grid_layout = QGridLayout(self.grid_host)
-        self.grid_layout.setContentsMargins(12, 12, 12, 12)
-        self.grid_layout.setSpacing(10)
+        self.grid_layout.setContentsMargins(2, 2, 2, 2)
+        self.grid_layout.setSpacing(12)
         self.grid_layout.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.scroll.setWidget(self.grid_host)
-        center_lay.addWidget(self.scroll, stretch=1)
+        main_lay.addWidget(self.scroll, stretch=1)
 
-        # Drop target hint
-        self.drop_hint = QLabel("Dateien hierher ziehen oder Button nutzen")
+        # ---- empty state ----
+        self.drop_hint = QLabel("Ziehe Fotos & Videos hierher\noder nutze „Importieren“ oben rechts")
+        self.drop_hint.setObjectName("dropHint")
         self.drop_hint.setAlignment(Qt.AlignCenter)
-        self.drop_hint.setAttribute(Qt.WA_StyledBackground, True)
-        self.drop_hint.setStyleSheet(
-            f"color:{config.COLOR_TEXT_DIM}; font-size:14px; padding:28px 20px; "
-            f"background: rgba(120,120,128,0.18); border-radius: 16px;"
-        )
-        center_lay.addWidget(self.drop_hint)
+        main_lay.addWidget(self.drop_hint, stretch=1)
 
-        # Assign bar – only visible when pending files exist
+        # ---- contextual action bar (floating) ----
         self.assign_frame = QFrame()
+        self.assign_frame.setObjectName("actionBar")
+        self.assign_frame.setAttribute(Qt.WA_StyledBackground, True)
         assign_bar = QHBoxLayout(self.assign_frame)
-        assign_bar.setContentsMargins(0, 4, 0, 0)
-        self.btn_select_all = QPushButton("Alle auswählen")
+        assign_bar.setContentsMargins(16, 10, 12, 10)
+        assign_bar.setSpacing(8)
+        self.lbl_pending = QLabel("0 ausgewählt")
+        self.lbl_pending.setObjectName("dim")
+        assign_bar.addWidget(self.lbl_pending)
+        assign_bar.addStretch()
+        self.btn_select_all = QPushButton("Alle")
         self.btn_select_all.clicked.connect(self._select_all_pending)
         assign_bar.addWidget(self.btn_select_all)
-
-        self.btn_deselect_all = QPushButton("Alle abwählen")
+        self.btn_deselect_all = QPushButton("Keine")
         self.btn_deselect_all.clicked.connect(self._deselect_all_pending)
         assign_bar.addWidget(self.btn_deselect_all)
-
-        assign_bar.addSpacing(16)
-        assign_bar.addWidget(QLabel("Ausgewählte zuordnen →"))
+        assign_bar.addSpacing(6)
+        arrow = QLabel("→")
+        arrow.setObjectName("dim")
+        assign_bar.addWidget(arrow)
         self.combo_target = QComboBox()
-        self.combo_target.setMinimumWidth(180)
+        self.combo_target.setMinimumWidth(170)
         assign_bar.addWidget(self.combo_target)
         self.btn_assign = QPushButton("Zuordnen")
+        self.btn_assign.setObjectName("primary")
         self.btn_assign.clicked.connect(self._assign_selected)
         assign_bar.addWidget(self.btn_assign)
-        assign_bar.addStretch()
-        center_lay.addWidget(self.assign_frame)
+        self.btn_clear_pending = QPushButton("Leeren")
+        self.btn_clear_pending.setObjectName("danger")
+        self.btn_clear_pending.clicked.connect(self._clear_pending)
+        assign_bar.addWidget(self.btn_clear_pending)
+        main_lay.addWidget(self.assign_frame)
         self.assign_frame.hide()
-        self.btn_clear_pending.hide()
 
-        root.addWidget(center, stretch=1)
+        body.addWidget(main, stretch=1)
 
-        # ---------- RIGHT: Info / Stats ----------
-        right = QFrame()
-        right.setObjectName("card")
-        right.setAttribute(Qt.WA_StyledBackground, True)
-        right.setFixedWidth(240)
-        right_lay = QVBoxLayout(right)
-        right_lay.setContentsMargins(14, 14, 14, 14)
-
-        info_title = QLabel("Info")
-        info_title.setAttribute(Qt.WA_StyledBackground, True)
-        info_title.setStyleSheet(
-            f"font-size: 13px; font-weight: 600; background: rgba(120,120,128,0.22); "
-            f"border-radius: 10px; padding: 6px 10px; color: {config.COLOR_TEXT};"
-        )
-        right_lay.addWidget(info_title)
+        # ================= STATUS STRIP =================
+        status = QFrame()
+        status.setObjectName("statusBar")
+        status.setAttribute(Qt.WA_StyledBackground, True)
+        status.setFixedHeight(30)
+        stl = QHBoxLayout(status)
+        stl.setContentsMargins(20, 0, 20, 0)
         self.info_box = QLabel("Bereit.")
-        self.info_box.setWordWrap(True)
-        self.info_box.setObjectName("dim")
-        self.info_box.setAttribute(Qt.WA_StyledBackground, True)
-        self.info_box.setStyleSheet(
-            f"font-size:12px; background: rgba(120,120,128,0.22); border-radius: 14px; "
-            f"padding: 10px 14px; color: {config.COLOR_TEXT_DIM};"
-        )
-        right_lay.addWidget(self.info_box)
+        self.info_box.setObjectName("statusText")
+        stl.addWidget(self.info_box)
+        stl.addStretch()
+        self.status_hint = QLabel("Leertaste = weiter · Esc = schließen")
+        self.status_hint.setObjectName("statusHint")
+        stl.addWidget(self.status_hint)
+        root.addWidget(status)
 
-        right_lay.addSpacing(16)
-        stats_title = QLabel("Session Stats")
-        stats_title.setAttribute(Qt.WA_StyledBackground, True)
-        stats_title.setStyleSheet(
-            f"font-size: 13px; font-weight: 600; background: rgba(120,120,128,0.22); "
-            f"border-radius: 10px; padding: 6px 10px; color: {config.COLOR_TEXT};"
-        )
-        right_lay.addWidget(stats_title)
-        self.stats_box = QLabel("Noch keine Session.")
-        self.stats_box.setWordWrap(True)
-        self.stats_box.setObjectName("dim")
-        self.stats_box.setAttribute(Qt.WA_StyledBackground, True)
-        self.stats_box.setStyleSheet(
-            f"font-size:12px; background: rgba(120,120,128,0.22); border-radius: 14px; "
-            f"padding: 10px 14px; color: {config.COLOR_TEXT_DIM};"
-        )
-        right_lay.addWidget(self.stats_box)
+        # hidden holder – content surfaced via Top-Darsteller popover / mood summary
+        self.stats_box = QLabel()
+        self.stats_box.hide()
 
-        right_lay.addStretch()
-
-        self.btn_stats = QPushButton("Top Darsteller")
-        self.btn_stats.clicked.connect(self._show_top)
-        right_lay.addWidget(self.btn_stats)
-
-        self.btn_settings = QPushButton("Einstellungen")
-        self.btn_settings.clicked.connect(self._open_settings)
-        right_lay.addWidget(self.btn_settings)
-
-        self.btn_export = QPushButton("Export ZIP")
-        self.btn_export.setToolTip("Alle Darsteller verschlüsselt als ZIP exportieren")
-        self.btn_export.clicked.connect(self._export_all)
-        right_lay.addWidget(self.btn_export)
-
-        add_soft_shadow(right)
-        root.addWidget(right)
-
-        # Enable drag & drop on center
-        center.setAcceptDrops(True)
-        center.dragEnterEvent = self._drag_enter
-        center.dropEvent = self._drop
+        # drag & drop anywhere in the main area
+        main.setAcceptDrops(True)
+        main.dragEnterEvent = self._drag_enter
+        main.dropEvent = self._drop
 
     def _setup_shortcuts(self):
         QShortcut(QKeySequence("Ctrl+I"), self, self._import_files)
@@ -1582,10 +1759,13 @@ class MainWindow(QMainWindow):
             self.btn_filter_vid.setChecked(False)
             self.browse_filter_frame.show()
         self._apply_browse_filter()
-        self.info_box.setText(
-            f"{perf['name']}: {len(self._browse_all_files)} Dateien\n"
-            f"Filter · Doppelklick = Vollbild · Entf = löschen"
-        )
+        self._set_header(perf["name"], f"{len(self._browse_all_files)} Dateien · Doppelklick = Vollbild · Entf = löschen")
+        self.info_box.setText(f"{perf['name']} · {len(self._browse_all_files)} Dateien")
+
+    def _set_header(self, title: str, subtitle: str = ""):
+        if hasattr(self, "header_title"):
+            self.header_title.setText(title)
+            self.header_sub.setText(subtitle)
 
     # ------------------------------------------------------------------
     # Import
@@ -1690,6 +1870,7 @@ class MainWindow(QMainWindow):
 
         log.info(f"Pending now has {added} files")
         self._refresh_grid()
+        self._set_header("Neue Dateien", "Auswählen und einem Darsteller zuordnen")
         self.info_box.setText(f"{added} Dateien bereit zum Zuordnen.")
 
         # auto-assign if we came from "Ordner → Darsteller"
@@ -1784,31 +1965,69 @@ class MainWindow(QMainWindow):
                 item.widget().deleteLater()
 
         if not self.pending_files:
+            self.scroll.hide()
             self.drop_hint.show()
-            self.lbl_pending.setText("0 Dateien bereit")
+            self.lbl_pending.setText("0 ausgewählt")
             self.assign_frame.hide()
-            self.btn_clear_pending.hide()
             return
 
         self.drop_hint.hide()
-        cols = max(1, self.scroll.viewport().width() // 210)
+        self.scroll.show()
+        cols = self._grid_columns()
+        self._grid_cols = cols
         for i, entry in enumerate(self.pending_files):
             thumb = ThumbItem(entry["path"], entry["type"])
+            thumb.is_selected = bool(entry.get("selected"))
             thumb.selected_changed.connect(self._on_thumb_selected)
             thumb.double_clicked.connect(self._preview_media)
             row, col = divmod(i, cols)
             self.grid_layout.addWidget(thumb, row, col)
 
-        self.lbl_pending.setText(f"{len(self.pending_files)} Dateien bereit")
-        has = len(self.pending_files) > 0
-        self.assign_frame.setVisible(has)
-        self.btn_clear_pending.setVisible(has)
+        self._update_selection_count()
+        self.assign_frame.show()
+
+    def _grid_columns(self) -> int:
+        vw = self.scroll.viewport().width()
+        if vw < THUMB_TILE:                      # not laid out yet → estimate
+            vw = self.width() - 236 - 44
+        return max(1, vw // (THUMB_TILE + self.grid_layout.spacing()))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._reflow_grid()
+
+    def _reflow_grid(self):
+        """Re-flow the tiles when the number of columns changes (Photos-style)."""
+        if not hasattr(self, "grid_layout") or self.grid_layout.count() == 0:
+            return
+        cols = self._grid_columns()
+        if cols == getattr(self, "_grid_cols", None):
+            return
+        self._grid_cols = cols
+        widgets = []
+        while self.grid_layout.count():
+            it = self.grid_layout.takeAt(0)
+            w = it.widget()
+            if w is not None:
+                widgets.append(w)
+        for i, w in enumerate(widgets):
+            r, c = divmod(i, cols)
+            self.grid_layout.addWidget(w, r, c)
+
+    def _update_selection_count(self):
+        sel = sum(1 for e in self.pending_files if e.get("selected"))
+        total = len(self.pending_files)
+        if sel:
+            self.lbl_pending.setText(f"{sel} von {total} ausgewählt")
+        else:
+            self.lbl_pending.setText(f"{total} Dateien · nichts ausgewählt")
 
     def _on_thumb_selected(self, thumb: ThumbItem, selected: bool):
         for entry in self.pending_files:
             if entry["path"] == thumb.path:
                 entry["selected"] = selected
                 break
+        self._update_selection_count()
 
     def _clear_pending(self, silent: bool = False):
         for entry in self.pending_files:
@@ -1830,6 +2049,7 @@ class MainWindow(QMainWindow):
             if w is not None and hasattr(w, "is_selected"):
                 w.is_selected = True
                 w._update_style()
+        self._update_selection_count()
         self.info_box.setText(f"Alle {len(self.pending_files)} Dateien ausgewählt.")
 
     def _deselect_all_pending(self):
@@ -1840,6 +2060,7 @@ class MainWindow(QMainWindow):
             if w is not None and hasattr(w, "is_selected"):
                 w.is_selected = False
                 w._update_style()
+        self._update_selection_count()
         self.info_box.setText("Auswahl aufgehoben.")
 
     def _delete_selected_pending(self):
@@ -2153,10 +2374,8 @@ class MainWindow(QMainWindow):
             switches = self.mood_window.session_switches
             pids = getattr(self, "_mood_pids", [])
             self.db.end_session(self.current_session_id, switches, pids)
-            self.stats_box.setText(
-                f"Letzte Session:\n{switches} Wechsel\n"
-                f"Dauer gespeichert."
-            )
+            self.stats_box.setText(f"Letzte Session: {switches} Wechsel")
+            self.info_box.setText(f"Session beendet · {switches} Wechsel gespeichert.")
         self.mood_window = None
         self.current_session_id = None
 
@@ -2174,21 +2393,42 @@ class MainWindow(QMainWindow):
                         counts[perf["name"]] += 1
         # also fall back to media play_count
         top_media = self.db.get_top_performers(10)
-        if not counts and not top_media:
-            self.stats_box.setText(
-                "Noch keine Stats.\n\n"
-                "Play-Counts steigen, wenn du\n"
-                "den Mood-Modus nutzt."
-            )
-            return
         lines = []
         if counts:
-            for name, cnt in counts.most_common(10):
-                lines.append(f"{name}: {cnt} Sessions")
+            for i, (name, cnt) in enumerate(counts.most_common(10), 1):
+                lines.append(f"{i}.  {name} — {cnt} Sessions")
         elif top_media:
-            for name, cnt in top_media:
-                lines.append(f"{name}: {cnt} Plays")
-        self.stats_box.setText("Top:\n" + "\n".join(lines))
+            for i, (name, cnt) in enumerate(top_media, 1):
+                lines.append(f"{i}.  {name} — {cnt} Plays")
+        self._popover(
+            "Top Darsteller",
+            "\n".join(lines) if lines else "Noch keine Statistik.\nStarte den Mood-Modus, dann füllt sich das hier."
+        )
+
+    def _popover(self, title: str, body: str):
+        """Small Apple-style info dialog."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        dlg.setStyleSheet(STYLE)
+        dlg.setMinimumWidth(340)
+        lay = QVBoxLayout(dlg)
+        lay.setContentsMargins(22, 20, 22, 18)
+        lay.setSpacing(14)
+        h = QLabel(title)
+        h.setStyleSheet("font-size:19px; font-weight:700;")
+        lay.addWidget(h)
+        b = QLabel(body)
+        b.setObjectName("dim")
+        b.setWordWrap(True)
+        lay.addWidget(b)
+        ok = QPushButton("Fertig")
+        ok.setObjectName("primary")
+        ok.clicked.connect(dlg.accept)
+        row = QHBoxLayout()
+        row.addStretch()
+        row.addWidget(ok)
+        lay.addLayout(row)
+        dlg.exec()
 
 
 
